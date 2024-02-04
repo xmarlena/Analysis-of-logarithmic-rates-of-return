@@ -1,0 +1,264 @@
+---
+title: "Badanie logarytmicznych stóp zrotu"
+output: html_document
+---
+
+# Opis pracy:
+
+Poniższa praca służy do analizy logarytmicznych stóp zwrotu jednej ze spółek WIG40.
+
+## Potrzebne biblioteki:
+
+```{r , warning = FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(psych)
+library(stats)
+```
+
+
+# Część 1 - badanie wszystkich danych
+
+Założenie : Ustalamy poziom istotności = 0,05
+
+```{r , warning = FALSE}
+dane <- read.csv("mwig40_d.csv") 
+```
+
+## Obliczanie dziennych logarytmicznych stóp zwrotu
+
+```{r , comment="  ", results='asis', warning=FALSE}
+dane <- dane%>%
+  arrange(dane)
+```
+### Stworzenie RCO - stopa zamknięcia do stopy otwarcia z dnia następnego
+```{r , comment="  ", results='asis', warning=FALSE}
+dane$RCO[1:501] <- log(dane$Otwarcie[2:501]) - log(dane$Zamkniecie[1:500]) 
+dane$RCO[501] = NA
+```
+### Stworzenie ROC - stopa otwarcia do stopy zamknięcia
+```{r , comment="  ", results='asis', warning=FALSE}
+dane$ROC <-log(dane$Zamkniecie)  - log(dane$Otwarcie) 
+```
+### Spostrzeżenia
+Warto zauważyć, że Wartości RCO są znacząco niższe, ponieważ w nocy mało się dzieje i mało osób gra na giełdzie - tym samym zmiany stóp są niskie.
+
+## Statystyki opisowe
+W celu pokazania podstawowych statystyk opisowych z pakietu "psych" i stosoujemy komendę "describe"
+
+### ROC
+```{r}
+describe(dane$ROC)
+```
+- Średnia = 0, odchylenie standardowe = 0,01
+- Skośność = -0,07 =\> rozkład bliski symetrzycznemu
+- Kurtoza = 3,81 =\> rozkład jest leptykurtyczny
+
+### RCO
+```{r}
+describe(dane$RCO)
+```
+- Średnia i odchylenie standardowe są w przybliżeniu równe 0, ponieważ jak wspomnieliśmy wcześniej, dane te przyjmują bardzo niskie wartości, niezauważalne przy zaokrągleniu do dwóch miejsc po przecinku.
+- Skośność = -6,35 =\> silna skośność lewostronna
+- Kurtoza = 87,22 =\> rozkład jest leptokurtyczny
+
+## Wykresy
+### ROC
+histogram stóp zwrotu od otwarcia do zamknięcia (ROC)
+
+```{r , comment="  ", results='asis'}
+ggplot(dane, aes(x = ROC)) +
+  geom_histogram(binwidth = 0.005, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Rozkład Logarytmicznych Stóp Zwrotu (ROC)",
+       x = "Logarytmiczna Stopa Zwrotu (ROC)",
+       y = "Liczba Dni")
+```
+
+wykres pudełkowy stóp zwrotu od otwarcia do zamknięcia (ROC)
+```{r}
+ggplot(dane, aes(y = ROC)) +
+  geom_boxplot(fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Wykres Pudełkowy Logarytmicznych Stóp Zwrotu (ROC)",
+       y = "Logarytmiczna Stopa Zwrotu (ROC)")
+```
+
+### RCO
+
+histogram stóp zwrotu od zamknięcia do otwarcia (RCO)
+```{r, warning=FALSE}
+ggplot(dane, aes(x = RCO)) +
+  geom_histogram(binwidth = 0.001, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Rozkład Logarytmicznych Stóp Zwrotu (RCO)",
+       x = "Logarytmiczna Stopa Zwrotu (RCO)",
+       y = "Liczba Dni")
+```
+
+wykres pudełkowy stóp zwrotu od otwarcia do zamknięcia (RCO)
+```{r, warning=FALSE}
+ggplot(dane, aes(y = RCO)) +
+  geom_boxplot(fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Wykres Pudełkowy Logarytmicznych Stóp Zwrotu (RCO)",
+       y = "Logarytmiczna Stopa Zwrotu (RCO)")
+```
+
+
+## Porównanie wartości oczekiwanych
+
+Aby zbadać wartości oczekiwane stóp zwrotu zakładamy, że dane są niezależne i możemy użyć "t.test" z biblioteki "stats"
+
+```{r , comment="  "}
+t.test(dane$RCO, dane$ROC)
+```
+
+p-value jest niższy od 0,05, zatem możemy stwierdzić, że wartości oczekiwane tych rozkładów istotnie się różnią.
+
+## Badanie normalności
+Po zobaczeniu wykresów z podpunktu B możemy przypuszczać, że dane mają rozkład zbliżony do normalnego, sprawdźmy to jeszcze testem:
+
+```{r , comment="  "}
+shapiro.test(dane$RCO) 
+shapiro.test(dane$ROC) 
+```
+
+P-value są niższe od 0,05 zatem dane nie pochodzą z rozkładu normalnego. Dlatego trzeba będzie użyć testów nieparametrycznych żeby zbadać, czy odchylenia standardowe stóp zwrotu ROC i RCO są takie same.
+
+## Badanie odchyleń standardowych
+Używamy testu "var.test" z biblioteki "stats", który pozwoli sprawdzić, czy wariancje danych są istotnie jednakowe.
+
+```{r , comment="  "}
+var.test(dane$ROC, dane$RCO)
+```
+Według testu istnieje statystycznie istotna różnica w wariancjach między danymi stopami, a jeśli wariancji to też i odchylenia standardowego
+Stwiedzamy zatem, że odchylenia standardowe stóp zwrotu są istotnie różne.
+
+
+## Porównanie rozkładów
+
+Aby zbadać czy testy mają taki sam rozkład, użyjemy testu Kolomongorowa-Smirnova:
+
+```{r , comment="  "}
+ks.test(dane$ROC, dane$RCO)
+```
+
+Jeśli przyjmiemy poziom istotności 0.05 to p value jest od niego mniejsze, więc te rozkłady tych danych są statystycznie różne
+
+
+
+
+
+# Część 2 - Badanie próbki z danych
+
+
+## Dzienne logarytmiczne stopy zwrotu
+Tworzymy RCO i ROC o długości 150 - to mniej niż 1/3 początkowych danych
+```{r , comment="  ", results='asis', warning=FALSE}
+probka = data.frame(RCO = dane$RCO[1:150], ROC = dane$ROC[1:150])
+probka$RCO = dane$RCO[1:150]
+probka$ROC = dane$ROC[1:150]
+```
+
+### Spostrzeżenia
+Wartości RCO pozostają znacząco niższe.
+
+
+## Statystyki opisowe
+
+### ROC
+```{r}
+describe(probka$ROC)
+```
+- Średnia = 0, odchylenie standardowe = 0,02
+- Skośność = 0,13 =\> rozkład bliski symetrzycznemu
+- Kurtoza = 4,17 =\> rozkład jest leptykurtyczny
+
+### RCO
+```{r}
+describe(probka$RCO)
+```
+- Średnia = 0, odchylenie standardowe = 0,01
+- Skośność = -5,32 =\> silna skośność lewostronna
+- Kurtoza = 44,38 =\> rozkład jest leptokurtyczny
+
+## Wykresy
+### ROC
+histogram stóp zwrotu od otwarcia do zamknięcia (ROC)
+
+```{r , comment="  ", results='asis'}
+ggplot(probka, aes(x = ROC)) +
+  geom_histogram(binwidth = 0.005, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Rozkład Logarytmicznych Stóp Zwrotu (ROC)",
+       x = "Logarytmiczna Stopa Zwrotu (ROC)",
+       y = "Liczba Dni")
+```
+
+wykres pudełkowy stóp zwrotu od otwarcia do zamknięcia (ROC)
+```{r}
+ggplot(probka, aes(y = ROC)) +
+  geom_boxplot(fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Wykres Pudełkowy Logarytmicznych Stóp Zwrotu (ROC)",
+       y = "Logarytmiczna Stopa Zwrotu (ROC)")
+```
+
+### RCO
+
+histogram stóp zwrotu od zamknięcia do otwarcia (RCO)
+```{r, warning=FALSE}
+ggplot(probka, aes(x = RCO)) +
+  geom_histogram(binwidth = 0.001, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Rozkład Logarytmicznych Stóp Zwrotu (RCO)",
+       x = "Logarytmiczna Stopa Zwrotu (RCO)",
+       y = "Liczba Dni")
+```
+
+wykres pudełkowy stóp zwrotu od otwarcia do zamknięcia (RCO)
+```{r, warning=FALSE}
+ggplot(probka, aes(y = RCO)) +
+  geom_boxplot(fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Wykres Pudełkowy Logarytmicznych Stóp Zwrotu (RCO)",
+       y = "Logarytmiczna Stopa Zwrotu (RCO)")
+```
+
+### Spostrzeżenia
+Zmiana wielkości próbki zmieniła wyniki, jednak tendencje pozostają te same. Warto zauważyć, że w próbce znajduje się wartość odstająca z RCO, która występowała także w danych początkowych.
+
+## Porównanie wartości oczekiwanych
+
+
+```{r , comment="  "}
+t.test(probka$RCO, probka$ROC)
+```
+
+p-value jest niższy od 0,05, zatem możemy stwierdzić, że wartości oczekiwane tych rozkładów istotnie się różnią.
+
+## Badanie normalności
+
+```{r , comment="  "}
+shapiro.test(probka$RCO) 
+shapiro.test(probka$ROC) 
+```
+
+P-value są niższe od 0,05 zatem dane nie pochodzą z rozkładu normalnego. Dlatego trzeba będzie użyć testów nieparametrycznych żeby zbadać, czy odchylenia standardowe stóp zwrotu ROC i RCO są takie same.
+
+## Badanie odchyleń standardowych
+Używamy testu "var.test" z biblioteki "stats", który pozwoli sprawdzić, czy wariancje danych są istotnie jednakowe.
+
+```{r , comment="  "}
+var.test(probka$ROC, probka$RCO)
+```
+Według testu istnieje statystycznie istotna różnica w wariancjach między danymi stopami, a jeśli wariancji to też i odchylenia standardowego
+Stwiedzamy zatem, że odchylenia standardowe stóp zwrotu są istotnie różne.
+
+
+## Porównanie rozkładów
+
+Aby zbadać czy testy mają taki sam rozkład, użyjemy testu Kolomongorowa-Smirnova:
+
+```{r , comment="  "}
+ks.test(probka$ROC, probka$RCO)
+```
+
+Jeśli przyjmiemy poziom istotności 0.05 to p value jest od niego mniejsze, więc te rozkłady tych danych są statystycznie różne
+
+
+# Podsumowanie końcowe
+Zarówno w statystykach wyliczonych ze wszystkich danych, jak i z próbki możemy zauważyć te same właściwości. Wartości statystyk opisowych zmieniły się, jednak na tyle mało, że ich interpretacja pozostaje taka sama. Podobnie interpretacje testów - one również pozostają takie same.
